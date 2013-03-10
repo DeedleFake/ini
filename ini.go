@@ -1,3 +1,4 @@
+// Package ini provides a simple parser for INI-based files.
 package ini
 
 import (
@@ -252,6 +253,7 @@ type ParseError struct {
 func (p *Parser) parseError(msg string) error {
 	return &ParseError{
 		Line: p.line,
+		Pos:  p.pos,
 		Err:  msg,
 	}
 }
