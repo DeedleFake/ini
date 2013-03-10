@@ -1,6 +1,7 @@
 package ini_test
 
 import (
+	"fmt"
 	"github.com/DeedleFake/ini"
 	"io"
 	"strings"
@@ -36,4 +37,37 @@ func TestNext(t *testing.T) {
 			panic(tok)
 		}
 	}
+}
+
+func ExampleNewParser() {
+	const example = `# This is a comment.
+	[Section]
+	setting=val ; This is also a comment.
+	other=something`
+
+	p := ini.NewParser(strings.NewReader(example))
+	for {
+		t, err := p.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			panic(err)
+		}
+
+		switch t := t.(type) {
+		case *ini.SectionToken:
+			fmt.Printf("%v:\n", t.Name)
+		case *ini.SettingToken:
+			fmt.Printf("\t%v: %v\n", t.Left, strings.TrimSpace(t.Right))
+		case *ini.CommentToken:
+			fmt.Println(t)
+		}
+	}
+	// Output: # This is a comment.
+	// Section:
+	//	setting: val
+	//; This is also a comment.
+	//	other: something
 }

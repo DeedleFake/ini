@@ -9,9 +9,32 @@ import (
 	"unicode"
 )
 
+// stateFunc represents a state for the parser's state machine.
 type stateFunc func(p *Parser, r rune) (stateFunc, error)
 
+// A Parser parses an INI file from an io.Reader.
 type Parser struct {
+	// Comments contains all runes which can start a comment.
+	//
+	// Default: #;
+	Comments string
+
+	// SectionStart is the rune which starts a section token.
+	//
+	// Default: [
+	SectionStart rune
+
+	// SectionEnd is the rune which ends a section token.
+	//
+	// Default: ]
+	SectionEnd rune
+
+	// Equals is the rune that separates the left side of a setting
+	// token from the right.
+	//
+	// Default: =
+	Equals rune
+
 	r    *bufio.Reader
 	line int
 	pos  int
@@ -19,15 +42,9 @@ type Parser struct {
 
 	buf bytes.Buffer
 	t   Token
-
-	Comments string
-
-	SectionStart rune
-	SectionEnd   rune
-
-	Equals rune
 }
 
+// NewParser initializes a new Parser for the given io.Reader.
 func NewParser(r io.Reader) *Parser {
 	var rr *bufio.Reader
 	if br, ok := r.(*bufio.Reader); ok {
@@ -169,6 +186,8 @@ func (p *Parser) right(r rune) (stateFunc, error) {
 	if strings.ContainsRune(p.Comments, r) {
 		p.r.UnreadRune()
 
+		p.t.(*SettingToken).Right = p.buf.String()
+
 		return nil, nil
 	}
 
@@ -177,6 +196,8 @@ func (p *Parser) right(r rune) (stateFunc, error) {
 	return (*Parser).right, nil
 }
 
+// Next reads the next token from the underlying io.Reader. It returns
+// an io.EOF when there are no more tokens available.
 func (p *Parser) Next() (Token, error) {
 	if p.eof {
 		return nil, io.EOF
@@ -221,6 +242,7 @@ func (p *Parser) Next() (Token, error) {
 	return p.t, nil
 }
 
+// ParseError is returned by (*Parser).Next() if it encounters an error.
 type ParseError struct {
 	Line int
 	Pos  int
@@ -240,12 +262,17 @@ func (err *ParseError) Error() string {
 
 type Token interface{}
 
+// A SectionToken represents a section header. For example,
+//
+//	[Name]
 type SectionToken struct {
-	start, end rune
-
+	// Name is the name of the section.
 	Name string
+
+	start, end rune
 }
 
+// String recreates the original section token in the INI file.
 func (t SectionToken) String() string {
 	var buf bytes.Buffer
 
@@ -256,13 +283,20 @@ func (t SectionToken) String() string {
 	return buf.String()
 }
 
+// A SettingToken represents a setting. For example,
+//
+//	left=right
 type SettingToken struct {
-	equals rune
+	// Left is the left-hand side of the setting assignment.
+	Left string
 
-	Left  string
+	// Right is the right-hand side of the setting assignment.
 	Right string
+
+	equals rune
 }
 
+// String recreates the original setting token.
 func (t SettingToken) String() string {
 	var buf bytes.Buffer
 
@@ -273,12 +307,16 @@ func (t SettingToken) String() string {
 	return buf.String()
 }
 
+// A CommentToken represents a comment.
 type CommentToken struct {
-	start rune
-
+	// Comment is the text of the comment, including any leading
+	// whitespace.
 	Comment string
+
+	start rune
 }
 
+// String recreates the original comment token.
 func (t CommentToken) String() string {
 	var buf bytes.Buffer
 
