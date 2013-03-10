@@ -29,15 +29,23 @@ type Parser struct {
 	// with.
 	//
 	// Default:
-	//	0: "\000"
-	//	a: "\a"
-	//	b: "\b"
-	//	t: "\t"
-	//	r: "\r"
-	//	n: "\n"
-	//	#:	"#"
-	//	;:	";"
+	//	'0':	"\000"
+	//	'a':	"\a"
+	//	'b':	"\b"
+	//	't':	"\t"
+	//	'r':	"\r"
+	//	'n':	"\n"
+	//	'\n':	""
 	Escapes map[rune]string
+
+	// If AllowUnknownEscapeSequence is true, unknown sequences are
+	// simply passed through. For example, assuming the default values
+	// for Escapes and Comments, if '\#' is found, it is interpreted as
+	// simply '#'. It will not start a comment. Otherwise an error is
+	// thrown.
+	//
+	// Default: true
+	AllowUnknownEscapeSequence bool
 
 	// SectionStart is the rune which starts a section token.
 	//
@@ -82,15 +90,15 @@ func NewParser(r io.Reader) *Parser {
 
 		Escaper: '\\',
 		Escapes: map[rune]string{
-			'0': "\000",
-			'a': "\a",
-			'b': "\b",
-			't': "\t",
-			'r': "\r",
-			'n': "\n",
-			'#': "#",
-			';': ";",
+			'0':  "\000",
+			'a':  "\a",
+			'b':  "\b",
+			't':  "\t",
+			'r':  "\r",
+			'n':  "\n",
+			'\n': "",
 		},
+		AllowUnknownEscapeSequence: true,
 
 		SectionStart: '[',
 		SectionEnd:   ']',
@@ -143,7 +151,7 @@ func (p *Parser) whitespace(r rune) (stateFunc, error) {
 func (p *Parser) section(r rune) (stateFunc, error) {
 	switch r {
 	case p.SectionStart:
-		return nil, p.parseError("Unexpected rune: " + string(r))
+		return nil, p.parseError(fmt.Sprintf("Unexpected rune: %q", r))
 	case p.SectionEnd:
 		p.t = &SectionToken{
 			start: p.SectionStart,
@@ -158,7 +166,7 @@ func (p *Parser) section(r rune) (stateFunc, error) {
 	}
 
 	if strings.ContainsRune(p.Comments, r) {
-		return nil, p.parseError("Unexpected rune: " + string(r))
+		return nil, p.parseError(fmt.Sprintf("Unexpected rune: %q", r))
 	}
 
 	p.buf.WriteRune(r)
@@ -205,7 +213,7 @@ func (p *Parser) left(r rune) (stateFunc, error) {
 	}
 
 	if strings.ContainsRune(p.Comments, r) {
-		return nil, p.parseError("Unexpected rune: " + string(r))
+		return nil, p.parseError(fmt.Sprintf("Unexpected rune: %q", r))
 	}
 
 	p.buf.WriteRune(r)
@@ -240,7 +248,11 @@ func (p *Parser) escape(r rune) (stateFunc, error) {
 	if str, ok := p.Escapes[r]; ok {
 		p.buf.WriteString(str)
 	} else {
-		return nil, p.parseError("Unknown escape sequence: " + string(r))
+		if p.AllowUnknownEscapeSequence {
+			p.buf.WriteRune(r)
+		} else {
+			return nil, p.parseError(fmt.Sprintf("Unknown escape sequence: %q", r))
+		}
 	}
 
 	return p.last, nil

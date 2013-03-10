@@ -41,9 +41,10 @@ func TestNext(t *testing.T) {
 
 func ExampleNewParser() {
 	const example = `# This is a comment.
-	[Section]
-	setting=val ; This is also a comment.
-	other=some\#thing`
+[Section]
+setting=val ; This is also a comment.
+other=some\n\
+\#thing`
 
 	p := ini.NewParser(strings.NewReader(example))
 	for {
@@ -69,5 +70,6 @@ func ExampleNewParser() {
 	// Section:
 	//	setting: val
 	//; This is also a comment.
-	//	other: some#thing
+	//	other: some
+	//#thing
 }

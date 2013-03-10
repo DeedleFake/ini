@@ -1,7 +1,7 @@
 ini
 ===
 
-This [Go][golang] package provides a simple parser for [INI][ini]-based files. It can be used to parse many INI-derivative files, including .desktop files and systemd unit files.
+This [Go][golang] package provides a simple parser for [INI][ini]-based files. It has full Unicode support, and can be used to parse many INI-derivative files, including .desktop files and systemd unit files.
 
 Installation
 ------------
