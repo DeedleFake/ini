@@ -20,6 +20,25 @@ type Parser struct {
 	// Default: #;
 	Comments string
 
+	// Escaper is the rune that marks the start of an escape sequence.
+	//
+	// Default: \
+	Escaper rune
+
+	// Escapes maps escape sequences to what they should be replaced
+	// with.
+	//
+	// Default:
+	//	0: "\000"
+	//	a: "\a"
+	//	b: "\b"
+	//	t: "\t"
+	//	r: "\r"
+	//	n: "\n"
+	//	#:	"#"
+	//	;:	";"
+	Escapes map[rune]string
+
 	// SectionStart is the rune which starts a section token.
 	//
 	// Default: [
@@ -39,7 +58,9 @@ type Parser struct {
 	r    *bufio.Reader
 	line int
 	pos  int
-	eof  bool
+	err  error
+
+	last stateFunc
 
 	buf bytes.Buffer
 	t   Token
@@ -58,6 +79,18 @@ func NewParser(r io.Reader) *Parser {
 		r: rr,
 
 		Comments: "#;",
+
+		Escaper: '\\',
+		Escapes: map[rune]string{
+			'0': "\000",
+			'a': "\a",
+			'b': "\b",
+			't': "\t",
+			'r': "\r",
+			'n': "\n",
+			'#': "#",
+			';': ";",
+		},
 
 		SectionStart: '[',
 		SectionEnd:   ']',
@@ -120,6 +153,8 @@ func (p *Parser) section(r rune) (stateFunc, error) {
 		}
 
 		return nil, nil
+	case p.Escaper:
+		return (*Parser).escape, nil
 	}
 
 	if strings.ContainsRune(p.Comments, r) {
@@ -165,6 +200,8 @@ func (p *Parser) left(r rune) (stateFunc, error) {
 		p.buf.Reset()
 
 		return (*Parser).right, nil
+	case p.Escaper:
+		return (*Parser).escape, nil
 	}
 
 	if strings.ContainsRune(p.Comments, r) {
@@ -182,6 +219,8 @@ func (p *Parser) right(r rune) (stateFunc, error) {
 		p.t.(*SettingToken).Right = p.buf.String()
 
 		return nil, nil
+	case p.Escaper:
+		return (*Parser).escape, nil
 	}
 
 	if strings.ContainsRune(p.Comments, r) {
@@ -197,12 +236,28 @@ func (p *Parser) right(r rune) (stateFunc, error) {
 	return (*Parser).right, nil
 }
 
+func (p *Parser) escape(r rune) (stateFunc, error) {
+	if str, ok := p.Escapes[r]; ok {
+		p.buf.WriteString(str)
+	} else {
+		return nil, p.parseError("Unknown escape sequence: " + string(r))
+	}
+
+	return p.last, nil
+}
+
 // Next reads the next token from the underlying io.Reader. It returns
 // an io.EOF when there are no more tokens available.
-func (p *Parser) Next() (Token, error) {
-	if p.eof {
-		return nil, io.EOF
+func (p *Parser) Next() (t Token, err error) {
+	if p.err != nil {
+		return nil, p.err
 	}
+
+	defer func() {
+		if err != nil {
+			p.err = err
+		}
+	}()
 
 	p.t = nil
 
@@ -212,7 +267,7 @@ func (p *Parser) Next() (Token, error) {
 		r, _, err := p.r.ReadRune()
 		if err != nil {
 			if err == io.EOF {
-				p.eof = true
+				p.err = err
 				r = '\n'
 			} else {
 				return nil, err
@@ -226,18 +281,21 @@ func (p *Parser) Next() (Token, error) {
 			p.pos++
 		}
 
-		state, err = state(p, r)
+		newState, err := state(p, r)
 		if err != nil {
 			return nil, err
 		}
 
-		if (state == nil) || p.eof {
+		p.last = state
+		state = newState
+
+		if (state == nil) || (p.err != nil) {
 			break
 		}
 	}
 
-	if p.eof && (p.t == nil) {
-		return nil, io.EOF
+	if (p.err != nil) && (p.t == nil) {
+		return nil, p.err
 	}
 
 	return p.t, nil
